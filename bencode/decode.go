@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"encoding"
 	"fmt"
+	"github.com/neoql/btlet/tools"
 	"io"
 	"reflect"
 	"strconv"
+	"sync"
 )
 
 var (
@@ -39,9 +41,23 @@ type Decoder struct {
 	unorderedKeysErr error
 }
 
+// set up bufioReaderPool for reuse the reader
+var bufioReaderPool sync.Pool
+
+func newReader(r io.Reader) *bufio.Reader {
+	if v := bufioReaderPool.Get(); v != nil {
+		br := v.(*bufio.Reader)
+		br.Reset(r)
+
+		return br
+	}
+
+	return bufio.NewReader(r)
+}
+
 // NewDecoder returns a new decoder that reads from r.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{r: bufio.NewReader(r)}
+	return &Decoder{r: newReader(r)}
 }
 
 // Decode reads the next bencoded value from its input and stores it in the value pointed to by v.
@@ -53,6 +69,8 @@ func (dec *Decoder) Decode(v interface{}) error {
 	// We decode rv not rv.Elem because the Unmarshaler interface
 	// test must be applied at the top level of the value.
 	err := dec.decode(rv)
+	bufioReaderPool.Put(dec.r)
+
 	if err != nil {
 		return err
 	}
@@ -83,12 +101,11 @@ func (dec *Decoder) BytesParsed() int {
 	return dec.offset
 }
 
-func (dec *Decoder) decode(val reflect.Value) error {
-	v := val
-
+func (dec *Decoder) decode(v reflect.Value) error {
 	if v.Kind() != reflect.Ptr && v.Type().Name() != "" && v.CanAddr() {
 		v = v.Addr()
 	}
+
 	for {
 		if v.Kind() == reflect.Interface && !v.IsNil() {
 			t := v.Elem()
@@ -158,7 +175,7 @@ func (dec *Decoder) decodeInt(val reflect.Value) error {
 	if err != nil {
 		return err
 	}
-	digits := string(line[:len(line)-1])
+	digits := tools.ByteSlice2String(line[:len(line)-1])
 
 	switch val.Kind() {
 	default:
@@ -204,7 +221,7 @@ func (dec *Decoder) decodeString(val reflect.Value) error {
 	}
 
 	//parse it into an int for making a slice
-	l32, err := strconv.ParseInt(string(line[:len(line)-1]), 10, 32)
+	l32, err := strconv.ParseInt(tools.ByteSlice2String(line[:len(line)-1]), 10, 32)
 	l := int(l32)
 	if err != nil {
 		return err
@@ -237,9 +254,9 @@ func (dec *Decoder) decodeString(val reflect.Value) error {
 		}
 		val.SetBytes(buf)
 	case reflect.String:
-		val.SetString(string(buf))
+		val.SetString(tools.ByteSlice2String(buf))
 	case reflect.Interface:
-		val.Set(reflect.ValueOf(string(buf)))
+		val.Set(reflect.ValueOf(tools.ByteSlice2String(buf)))
 	}
 	return nil
 }
@@ -368,7 +385,7 @@ func (dec *Decoder) decodeDict(val reflect.Value) error {
 
 		if dec.disallowUnorderedKeys && lastKey > key && dec.unorderedKeysErr == nil {
 			dec.unorderedKeysErr = &SyntaxError{
-				fmt.Sprintf("unordered dictionary: %q appears before %q", lastKey, key), 
+				fmt.Sprintf("unordered dictionary: %q appears before %q", lastKey, key),
 				int64(dec.offset),
 			}
 		}
@@ -383,7 +400,7 @@ func (dec *Decoder) decodeDict(val reflect.Value) error {
 			if !ok {
 				if dec.disallowUnknownFields && dec.unknownFieldsErr == nil {
 					dec.unknownFieldsErr = &SyntaxError{
-						fmt.Sprintf("disallow unknow fields %s", key), 
+						fmt.Sprintf("disallow unknow fields %s", key),
 						int64(dec.offset),
 					}
 				}
@@ -495,7 +512,7 @@ func (dec *Decoder) readStringInto(buf *bytes.Buffer) error {
 			return err
 		}
 	}
-	length, err := strconv.ParseInt(string(line[:len(line)-1]), 10, 64)
+	length, err := strconv.ParseInt(tools.ByteSlice2String(line[:len(line)-1]), 10, 64)
 	if buf != nil {
 		_, err = dec.readNBytesInto(buf, length)
 		if err != nil {

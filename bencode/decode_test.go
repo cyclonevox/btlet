@@ -367,3 +367,20 @@ func TestNestedRawDecode(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkDecode(b *testing.B) {
+	var (
+		unmarshalTestData = "d4:infod6:lengthi170917888e12:piece lengthi262144e4:name30:debian-8.8.0-arm64-netinst.isoe8:announce38:udp://tracker.publicbt.com:80/announce13:announce-listll38:udp://tracker.publicbt.com:80/announceel44:udp://tracker.openbittorrent.com:80/announceee7:comment33:Debian CD from cdimage.debian.orge"
+		x                 = new(map[string]interface{})
+	)
+
+	b.Run("using new Decoder", func(b *testing.B) {
+		b.ReportAllocs()
+		for n := 0; n < b.N; n++ {
+			err := NewDecoder(strings.NewReader(unmarshalTestData)).Decode(x)
+			if err != nil {
+				b.Errorf("Decode returned %+v, %v", x, err)
+			}
+		}
+	})
+}

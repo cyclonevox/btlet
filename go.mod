@@ -1,6 +1,6 @@
 module github.com/neoql/btlet
 
-go 1.19
+go 1.20
 
 require (
 	github.com/neoql/workerpool v0.0.0-20190129041711-5c23a1fd3602

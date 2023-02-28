@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
+	"unsafe"
 )
 
 // RandomString generates a size-length string randomly.
@@ -38,6 +39,14 @@ func CommonPrefixLen(a, b string) int {
 	}
 
 	return i*8 + j - 1
+}
+
+func ByteSlice2String(s []byte) string {
+	return unsafe.String(&s[0], len(s))
+}
+
+func String2ByteSlice(str string) []byte {
+	return unsafe.Slice(unsafe.StringData(str), len(str))
 }
 
 // DecodeCompactIPPortInfo decodes compactIP-address/port info in BitTorrent
